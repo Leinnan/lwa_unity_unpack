@@ -5,7 +5,7 @@ use flate2::read::GzDecoder;
 use tar::Archive;
 use std::collections::HashMap;
 use std::ffi::OsStr;
-use std::hash::Hash;
+
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::process::Command;
@@ -71,7 +71,7 @@ fn main() {
                 if file_name == "pathname" {
                     let path = sub_entry.path();
                     let file = File::open(path).unwrap();
-                    let mut buf_reader = BufReader::new(file);
+                    let buf_reader = BufReader::new(file);
                     let line = buf_reader.lines().next();
                     match line {
                         Some(Ok(path)) => real_path = path,
@@ -87,14 +87,14 @@ fn main() {
         }
     }
     println!("Results:");
-    let mut mapping_arc = Arc::new(mapping);
-    let tmp_dir = Arc::new(tmp_dir.clone());
-    let output_dir = Arc::new(output_dir.clone());
+    let mapping_arc = Arc::new(mapping);
+    let tmp_dir = Arc::new(tmp_dir);
+    let output_dir = Arc::new(output_dir);
 
     mapping_arc.par_iter().for_each(|(asset_hash, asset_path)| {
         let path = Path::new(asset_path);
         let source_asset = Path::new(&*tmp_dir).join(asset_hash).join("asset");
-        let result_path = output_dir.join(&path);
+        let result_path = output_dir.join(path);
 
         process_directory(asset_hash, asset_path, &result_path);
         check_source_asset_exists(&source_asset);
@@ -129,7 +129,7 @@ fn main() {
         let out_path = result_path.with_extension("");
         println!("{:?}", &["--input", source_asset.to_str().unwrap(), "--output", out_path.to_str().unwrap()]);
         let output = Command::new(tool)
-            .args(&["--input", source_asset.to_str().unwrap(), "-b", "--output", out_path.to_str().unwrap()])
+            .args(["--input", source_asset.to_str().unwrap(), "-b", "--output", out_path.to_str().unwrap()])
             .output().unwrap();
         let output_result = String::from_utf8_lossy(&output.stdout);
         println!("output: {}", output_result);
