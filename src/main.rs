@@ -1,16 +1,16 @@
-use std::fs::File;
-use std::{fs, io, sync::Arc};
-use std::path::{Path, PathBuf};
 use flate2::read::GzDecoder;
-use tar::Archive;
 use std::collections::HashMap;
 use std::ffi::OsStr;
+use std::fs::File;
+use std::path::{Path, PathBuf};
+use std::{fs, io, sync::Arc};
+use tar::Archive;
 
+use clap::Parser;
+use rayon::prelude::*;
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::process::Command;
-use rayon::prelude::*;
-use clap::Parser;
 
 /// Program for unpacking unitypackages files.
 #[derive(Parser, Debug)]
@@ -24,8 +24,8 @@ struct Args {
     output: PathBuf,
 
     /// optional- path to the tool that will auto convert fbx files to gltf during unpacking
-    #[arg(short,long)]
-    fbx_to_gltf: Option<PathBuf>
+    #[arg(short, long)]
+    fbx_to_gltf: Option<PathBuf>,
 }
 
 pub fn extract_archive(archive_path: &Path, extract_to: &Path) -> io::Result<()> {
@@ -48,7 +48,7 @@ fn main() {
         println!("Temp directory exits, cleaning up first.");
         fs::remove_dir_all(tmp_dir).unwrap();
     }
-    if let Err(e) = extract_archive(archive_path,tmp_dir) {
+    if let Err(e) = extract_archive(archive_path, tmp_dir) {
         println!("Failed to extract archive: {}", e);
     }
     if output_dir.exists() {
@@ -101,7 +101,11 @@ fn main() {
 
         if args.fbx_to_gltf.is_some() {
             if let Some("fbx") = path.extension().and_then(OsStr::to_str) {
-                process_fbx_file(&source_asset, &result_path, &args.fbx_to_gltf.clone().unwrap());
+                process_fbx_file(
+                    &source_asset,
+                    &result_path,
+                    &args.fbx_to_gltf.clone().unwrap(),
+                );
                 return;
             }
         }
@@ -127,10 +131,25 @@ fn main() {
 
     fn process_fbx_file(source_asset: &Path, result_path: &Path, tool: &PathBuf) {
         let out_path = result_path.with_extension("");
-        println!("{:?}", &["--input", source_asset.to_str().unwrap(), "--output", out_path.to_str().unwrap()]);
+        println!(
+            "{:?}",
+            &[
+                "--input",
+                source_asset.to_str().unwrap(),
+                "--output",
+                out_path.to_str().unwrap()
+            ]
+        );
         let output = Command::new(tool)
-            .args(["--input", source_asset.to_str().unwrap(), "-b", "--output", out_path.to_str().unwrap()])
-            .output().unwrap();
+            .args([
+                "--input",
+                source_asset.to_str().unwrap(),
+                "-b",
+                "--output",
+                out_path.to_str().unwrap(),
+            ])
+            .output()
+            .unwrap();
         let output_result = String::from_utf8_lossy(&output.stdout);
         println!("output: {}", output_result);
     }
