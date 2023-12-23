@@ -1,4 +1,4 @@
-# lwa_unity_unpack [![Build Status](https://github.com/Leinnan/lwa_unity_unpack/workflows/CI/badge.svg)](https://github.com/Leinnan/lwa_unity_unpack/actions?workflow=CI)
+# lwa_unity_unpack [![build](https://github.com/Leinnan/lwa_unity_unpack/actions/workflows/rust.yml/badge.svg)](https://github.com/Leinnan/lwa_unity_unpack/actions/workflows/rust.yml)
 [![license](https://img.shields.io/crates/l/lwa_unity_unpack)](https://github.com/Leinnan/lwa_unity_unpack#license)
 [![crates.io](https://img.shields.io/crates/v/lwa_unity_unpack.svg)](https://crates.io/crates/lwa_unity_unpack)
 [![crates.io](https://img.shields.io/crates/d/lwa_unity_unpack.svg)](https://crates.io/crates/lwa_unity_unpack)
