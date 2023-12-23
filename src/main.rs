@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::{fs, io};
+use std::{fs, io, sync::Arc};
 use std::path::Path;
 use flate2::read::GzDecoder;
 use tar::Archive;
@@ -9,6 +9,7 @@ use std::hash::Hash;
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::process::Command;
+use rayon::prelude::*;
 
 pub fn extract_archive(archive_path: &Path, extract_to: &Path) -> io::Result<()> {
     let tar_gz = File::open(archive_path)?;
@@ -40,21 +41,17 @@ fn main() {
         let entry = entry.unwrap();
         let root_file = entry.path();
         let asset = entry.file_name().into_string().unwrap();
-
         if root_file.is_dir() {
             let mut real_path = String::new();
             let mut has_asset = false;
-
             for sub_entry in fs::read_dir(root_file.clone()).unwrap() {
                 let sub_entry = sub_entry.unwrap();
                 let file_name = sub_entry.file_name().into_string().unwrap();
-
                 if file_name == "pathname" {
                     let path = sub_entry.path();
                     let file = File::open(path).unwrap();
                     let mut buf_reader = BufReader::new(file);
                     let line = buf_reader.lines().next();
-
                     match line {
                         Some(Ok(path)) => real_path = path,
                         _ => continue,
@@ -63,17 +60,19 @@ fn main() {
                     has_asset = true;
                 }
             }
-
             if has_asset {
                 mapping.insert(asset, real_path);
             }
         }
     }
-
     println!("Results:");
-    for (asset_hash, asset_path) in &mapping {
+    let mut mapping_arc = Arc::new(mapping);
+    let tmp_dir = Arc::new(tmp_dir.clone());
+    let output_dir = Arc::new(output_dir.clone());
+
+    mapping_arc.par_iter().for_each(|(asset_hash, asset_path)| {
         let path = Path::new(asset_path);
-        let source_asset = Path::new(tmp_dir).join(asset_hash).join("asset");
+        let source_asset = Path::new(&*tmp_dir).join(asset_hash).join("asset");
         let result_path = output_dir.join(&path);
 
         process_directory(asset_hash, asset_path, &result_path);
@@ -81,12 +80,13 @@ fn main() {
 
         if let Some("fbx") = path.extension().and_then(OsStr::to_str) {
             process_fbx_file(&source_asset, &result_path);
-            continue;
+            return;
         }
 
         process_non_fbx_file(&source_asset, &result_path);
-    }
-    fs::remove_dir_all(tmp_dir).unwrap();
+    });
+
+    fs::remove_dir_all(Path::new(&*tmp_dir)).unwrap();
 
     fn process_directory(asset_hash: &str, asset_path: &str, result_path: &Path) {
         println!("{}: {:?}", asset_hash, asset_path);
@@ -115,8 +115,4 @@ fn main() {
     fn process_non_fbx_file(source_asset: &Path, result_path: &Path) {
         fs::rename(source_asset, result_path).unwrap();
     }
-
-
 }
-
-
