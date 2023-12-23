@@ -2,8 +2,22 @@
 name = "lwa_unity_unpack"
 version = "0.1.0"
 edition = "2021"
+repository = "https://github.com/Leinnan/lwa_unity_unpack"
+homepage = "https://github.com/Leinnan/lwa_unity_unpack"
+readme = "README.md"
+license = "MIT"
+keywords = ["cli", "unity", "gamedev", "game-development"]
+categories = ["command-line-utilities", "development-tools"]
+description = "Simple CLI tool for unpacking the unitypackages."
+exclude = ["/.github"]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[profile.release]
+opt-level = 'z'
+panic = 'abort'
+lto = true
+
+[profile.dev.package."*"]
+opt-level = 2
 
 [dependencies]
 clap = { version = "4.4", features = ["derive"] }

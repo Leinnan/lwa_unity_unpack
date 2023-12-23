@@ -1,6 +1,11 @@
-# lwa_unity_unpack
+# lwa_unity_unpack [![Build Status](https://github.com/Leinnan/lwa_unity_unpack/workflows/CI/badge.svg)](https://github.com/Leinnan/lwa_unity_unpack/actions?workflow=CI)
+[![license](https://img.shields.io/crates/l/lwa_unity_unpack)](https://github.com/Leinnan/lwa_unity_unpack#license)
+[![crates.io](https://img.shields.io/crates/v/lwa_unity_unpack.svg)](https://crates.io/crates/lwa_unity_unpack)
+[![crates.io](https://img.shields.io/crates/d/lwa_unity_unpack.svg)](https://crates.io/crates/lwa_unity_unpack)
 
-Simple CLI tool for unpacking the unitypackages. Also allows auto convert of the FBX files to GLTF during unpacking.
+Simple CLI tool for unpacking the unitypackages.
+
+Also allows auto convert of the FBX files to GLTF during unpacking. For that download the tool from [here](https://github.com/godotengine/FBX2glTF) and pass the path to executable file as `--fbx-to-gltf` argument value.
 
 ```bash
 Program for unpacking unitypackages files
