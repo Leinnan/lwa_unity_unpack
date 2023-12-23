@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::{fs, io, sync::Arc};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use flate2::read::GzDecoder;
 use tar::Archive;
 use std::collections::HashMap;
@@ -10,6 +10,23 @@ use std::io::prelude::*;
 use std::io::BufReader;
 use std::process::Command;
 use rayon::prelude::*;
+use clap::Parser;
+
+/// Program for unpacking unitypackages files.
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// .unitypackage file to extract
+    #[arg(short, long)]
+    input: PathBuf,
+    /// target directory
+    #[arg(short, long)]
+    output: PathBuf,
+
+    /// optional- path to the tool that will auto convert fbx files to gltf during unpacking
+    #[arg(short,long)]
+    fbx_to_gltf: Option<PathBuf>
+}
 
 pub fn extract_archive(archive_path: &Path, extract_to: &Path) -> io::Result<()> {
     let tar_gz = File::open(archive_path)?;
@@ -20,9 +37,13 @@ pub fn extract_archive(archive_path: &Path, extract_to: &Path) -> io::Result<()>
 }
 
 fn main() {
-    let archive_path = Path::new("C:\\PROJECTS\\lwa_unity_unpack\\POLYGON_Snow_Kit_Unity_2020_3_v1_4.unitypackage");
+    let args = Args::parse();
+    let archive_path = Path::new(&args.input);
     let tmp_dir = Path::new("./tmp_dir");
-    let output_dir = Path::new("./output");
+    let output_dir = Path::new(&args.output);
+    if !archive_path.exists() {
+        panic!("Input file does not exits");
+    }
     if tmp_dir.exists() {
         println!("Temp directory exits, cleaning up first.");
         fs::remove_dir_all(tmp_dir).unwrap();
@@ -78,9 +99,11 @@ fn main() {
         process_directory(asset_hash, asset_path, &result_path);
         check_source_asset_exists(&source_asset);
 
-        if let Some("fbx") = path.extension().and_then(OsStr::to_str) {
-            process_fbx_file(&source_asset, &result_path);
-            return;
+        if args.fbx_to_gltf.is_some() {
+            if let Some("fbx") = path.extension().and_then(OsStr::to_str) {
+                process_fbx_file(&source_asset, &result_path, &args.fbx_to_gltf.clone().unwrap());
+                return;
+            }
         }
 
         process_non_fbx_file(&source_asset, &result_path);
@@ -102,10 +125,10 @@ fn main() {
         }
     }
 
-    fn process_fbx_file(source_asset: &Path, result_path: &Path) {
+    fn process_fbx_file(source_asset: &Path, result_path: &Path, tool: &PathBuf) {
         let out_path = result_path.with_extension("");
         println!("{:?}", &["--input", source_asset.to_str().unwrap(), "--output", out_path.to_str().unwrap()]);
-        let output = Command::new("C:\\tools\\FBX2glTF.exe")
+        let output = Command::new(tool)
             .args(&["--input", source_asset.to_str().unwrap(), "-b", "--output", out_path.to_str().unwrap()])
             .output().unwrap();
         let output_result = String::from_utf8_lossy(&output.stdout);
