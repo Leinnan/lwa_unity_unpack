@@ -22,3 +22,12 @@ Options:
 
 
 `lwa_unity_unpack -i "C:\\PROJECTS\\lwa_unity_unpack\\POLYGON_Snow_Kit_Unity_2020_3_v1_4.unitypackage" -o "output" -f "C:\\tools\\FBX2glTF.exe"`
+
+
+## Install
+
+For now Rust Cargo is required:
+
+```sh
+cargo install lwa_unity_unpack
+```
