@@ -1,5 +1,5 @@
 # lwa_unity_unpack [![build](https://github.com/Leinnan/lwa_unity_unpack/actions/workflows/rust.yml/badge.svg)](https://github.com/Leinnan/lwa_unity_unpack/actions/workflows/rust.yml)
-[![license](https://img.shields.io/crates/l/lwa_unity_unpack)](https://github.com/Leinnan/lwa_unity_unpack#license)
+ [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![crates.io](https://img.shields.io/crates/v/lwa_unity_unpack.svg)](https://crates.io/crates/lwa_unity_unpack)
 [![crates.io](https://img.shields.io/crates/d/lwa_unity_unpack.svg)](https://crates.io/crates/lwa_unity_unpack)
 
