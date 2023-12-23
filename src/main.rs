@@ -5,6 +5,7 @@ use flate2::read::GzDecoder;
 use tar::Archive;
 use std::collections::HashMap;
 use std::ffi::OsStr;
+use std::hash::Hash;
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::process::Command;
@@ -71,34 +72,51 @@ fn main() {
 
     println!("Results:");
     for (asset_hash, asset_path) in &mapping {
-        println!("{}: {}", asset_hash, asset_path);
         let path = Path::new(asset_path);
         let source_asset = Path::new(tmp_dir).join(asset_hash).join("asset");
-        let result_path = output_dir.join(path);
+        let result_path = output_dir.join(&path);
+
+        process_directory(asset_hash, asset_path, &result_path);
+        check_source_asset_exists(&source_asset);
+
+        if let Some("fbx") = path.extension().and_then(OsStr::to_str) {
+            process_fbx_file(&source_asset, &result_path);
+            continue;
+        }
+
+        process_non_fbx_file(&source_asset, &result_path);
+    }
+    fs::remove_dir_all(tmp_dir).unwrap();
+
+    fn process_directory(asset_hash: &str, asset_path: &str, result_path: &Path) {
+        println!("{}: {:?}", asset_hash, asset_path);
         let result_dir = result_path.parent().unwrap();
         if !result_dir.exists() {
             fs::create_dir_all(result_dir).unwrap();
         }
+    }
 
+    fn check_source_asset_exists(source_asset: &Path) {
         if !source_asset.exists() {
             panic!("SOURCE ASSET DOES NOT EXIST: {}", source_asset.display());
         }
-        if let Some("fbx") = path.extension().and_then(OsStr::to_str) {
-            let out_path = result_path.with_extension("");
-            println!("{:?}",&["--input", source_asset.to_str().unwrap(),"--output",out_path.to_str().unwrap()]);
-            let output = Command::new("C:\\tools\\FBX2glTF.exe")
-                .args(&["--input", source_asset.to_str().unwrap(),"-b","--output",out_path.to_str().unwrap()])
-                .output().unwrap();
-
-            let output_result = String::from_utf8_lossy(&output.stdout);
-
-            println!("output: {}", output_result);
-            continue;
-        }
-        fs::rename(source_asset,result_path).unwrap();
     }
 
-    //fs::remove_dir_all(tmp_dir).unwrap();
+    fn process_fbx_file(source_asset: &Path, result_path: &Path) {
+        let out_path = result_path.with_extension("");
+        println!("{:?}", &["--input", source_asset.to_str().unwrap(), "--output", out_path.to_str().unwrap()]);
+        let output = Command::new("C:\\tools\\FBX2glTF.exe")
+            .args(&["--input", source_asset.to_str().unwrap(), "-b", "--output", out_path.to_str().unwrap()])
+            .output().unwrap();
+        let output_result = String::from_utf8_lossy(&output.stdout);
+        println!("output: {}", output_result);
+    }
+
+    fn process_non_fbx_file(source_asset: &Path, result_path: &Path) {
+        fs::rename(source_asset, result_path).unwrap();
+    }
+
+
 }
 
 
