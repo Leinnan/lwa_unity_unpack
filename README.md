@@ -28,7 +28,9 @@ Options:
 
 ## Install
 
-For now Rust Cargo is required:
+It can be downloaded by going to Releases page.
+
+It can be also installed using Rust Cargo:
 
 ```sh
 cargo install lwa_unity_unpack
