@@ -26,6 +26,10 @@ struct Args {
     /// optional- path to the tool that will auto convert fbx files to gltf during unpacking
     #[arg(short, long)]
     fbx_to_gltf: Option<PathBuf>,
+
+    /// optional- extensions that will be ignored during unpacking
+    #[arg(long, action = clap::ArgAction::Append)]
+    ignore_extensions: Option<Vec<String>>,
 }
 
 pub fn extract_archive(archive_path: &Path, extract_to: &Path) -> io::Result<()> {
@@ -37,7 +41,8 @@ pub fn extract_archive(archive_path: &Path, extract_to: &Path) -> io::Result<()>
 }
 
 fn main() {
-    let args = Args::parse();
+    let args : Args = Args::parse();
+    let ignored_extensions = args.ignore_extensions.unwrap_or(vec![]);
     let archive_path = Path::new(&args.input);
     let tmp_dir = Path::new("./tmp_dir");
     let output_dir = Path::new(&args.output);
@@ -63,7 +68,8 @@ fn main() {
         let root_file = entry.path();
         let asset = entry.file_name().into_string().unwrap();
         if root_file.is_dir() {
-            let mut real_path = String::new();
+            let mut real_path= String::new() ;
+            let mut extension = None;
             let mut has_asset = false;
             for sub_entry in fs::read_dir(root_file.clone()).unwrap() {
                 let sub_entry = sub_entry.unwrap();
@@ -74,14 +80,19 @@ fn main() {
                     let buf_reader = BufReader::new(file);
                     let line = buf_reader.lines().next();
                     match line {
-                        Some(Ok(path)) => real_path = path,
+                        Some(Ok(path)) => {
+                            real_path = path;
+                            if let Some(e) = Path::new(&real_path).extension().and_then(OsStr::to_str) {
+                                extension = Some(String::from(e));
+                            }
+                        },
                         _ => continue,
                     }
                 } else if file_name == "asset" {
                     has_asset = true;
                 }
             }
-            if has_asset {
+            if has_asset && !ignored_extensions.contains(&extension.unwrap_or_default()){
                 mapping.insert(asset, real_path);
             }
         }
