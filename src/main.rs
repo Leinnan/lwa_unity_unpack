@@ -1,14 +1,8 @@
 mod args;
+pub mod asset;
 mod unpacker;
 
 use clap::Parser;
-
-
-
-
-
-
-
 
 fn main() {
     let args = crate::args::Args::parse();
