@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0]
+
+### Changed
+
+- Multithreaded unpacking improvements.
+- Split code. 
+
 ## [0.2.1]
 
 ### Added
