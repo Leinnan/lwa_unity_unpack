@@ -1,8 +1,8 @@
-use std::path::PathBuf;
 use clap::Parser;
+use std::path::{PathBuf};
 
 /// Program for unpacking unitypackages files.
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 pub struct Args {
     /// .unitypackage file to extract
