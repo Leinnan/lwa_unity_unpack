@@ -39,6 +39,7 @@ impl Unpacker {
     pub fn process_data(&self) {
         let archive_path = Path::new(&self.args.input);
         let output_dir = Path::new(&self.args.output);
+        let copy_meta_files = self.args.copy_meta_files;
         let tmp_path = Path::new("./tmp_dir");
         if let Err(e) = Unpacker::extract_archive(archive_path, tmp_path) {
             println!("Failed to extract archive: {}", e);
@@ -67,13 +68,20 @@ impl Unpacker {
         let mapping: Vec<Asset> = receiver.iter().collect();
         let mapping_arc = Arc::new(mapping);
 
-        mapping_arc.par_iter().for_each(|(asset)| {
+        mapping_arc.par_iter().for_each(|asset| {
             let asset_hash = &asset.hash;
             let path = Path::new(&asset.path_name);
             let source_asset = Path::new(&*tmp_dir).join(asset_hash).join("asset");
             let result_path = output_dir.join(path);
 
             process_directory(asset_hash, &asset.path_name, &result_path);
+            if copy_meta_files && asset.has_meta {
+                let source_meta = Path::new(&*tmp_dir).join(asset_hash).join("asset.meta");
+                let mut meta_path = asset.path_name.clone();
+                meta_path.push_str(".meta");
+                let result_path = output_dir.join(meta_path);
+                fs::rename(source_meta, result_path).unwrap();
+            }
             check_source_asset_exists(&source_asset);
 
             if self.args.fbx_to_gltf.is_some() {

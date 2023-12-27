@@ -18,6 +18,8 @@ Options:
   -f, --fbx-to-gltf <FBX_TO_GLTF>  optional- path to the tool that will auto convert fbx files to gltf during unpacking
       --ignore-extensions <IGNORE_EXTENSIONS>
           optional- extensions that will be ignored during unpacking
+      --copy-meta-files
+          copy meta files alongside regular files
   -h, --help                       Print help
   -V, --version                    Print version
 ```

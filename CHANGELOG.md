@@ -2,6 +2,10 @@
 
 ## [0.3.0]
 
+### Added
+
+- New flag `--copy-meta-files` for copying meta files alongside assets.
+
 ### Changed
 
 - Multithreaded unpacking improvements.

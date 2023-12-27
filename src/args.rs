@@ -1,5 +1,5 @@
 use clap::Parser;
-use std::path::{PathBuf};
+use std::path::PathBuf;
 
 /// Program for unpacking unitypackages files.
 #[derive(Parser, Debug, Clone)]
@@ -19,4 +19,8 @@ pub struct Args {
     /// optional- extensions that will be ignored during unpacking
     #[arg(long, action = clap::ArgAction::Append)]
     pub ignore_extensions: Option<Vec<String>>,
+
+    /// copy meta files alongside regular files
+    #[arg(long, default_value = "false", default_missing_value = "true")]
+    pub copy_meta_files: bool,
 }
