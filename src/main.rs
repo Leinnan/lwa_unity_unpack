@@ -41,8 +41,8 @@ pub fn extract_archive(archive_path: &Path, extract_to: &Path) -> io::Result<()>
 }
 
 fn main() {
-    let args : Args = Args::parse();
-    let ignored_extensions = args.ignore_extensions.unwrap_or(vec![]);
+    let args: Args = Args::parse();
+    let ignored_extensions = args.ignore_extensions.unwrap_or_default();
     let archive_path = Path::new(&args.input);
     let tmp_dir = Path::new("./tmp_dir");
     let output_dir = Path::new(&args.output);
@@ -68,7 +68,7 @@ fn main() {
         let root_file = entry.path();
         let asset = entry.file_name().into_string().unwrap();
         if root_file.is_dir() {
-            let mut real_path= String::new() ;
+            let mut real_path = String::new();
             let mut extension = None;
             let mut has_asset = false;
             for sub_entry in fs::read_dir(root_file.clone()).unwrap() {
@@ -82,17 +82,19 @@ fn main() {
                     match line {
                         Some(Ok(path)) => {
                             real_path = path;
-                            if let Some(e) = Path::new(&real_path).extension().and_then(OsStr::to_str) {
+                            if let Some(e) =
+                                Path::new(&real_path).extension().and_then(OsStr::to_str)
+                            {
                                 extension = Some(String::from(e));
                             }
-                        },
+                        }
                         _ => continue,
                     }
                 } else if file_name == "asset" {
                     has_asset = true;
                 }
             }
-            if has_asset && !ignored_extensions.contains(&extension.unwrap_or_default()){
+            if has_asset && !ignored_extensions.contains(&extension.unwrap_or_default()) {
                 mapping.insert(asset, real_path);
             }
         }
