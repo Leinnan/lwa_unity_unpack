@@ -5,7 +5,6 @@ use rayon::prelude::*;
 use std::ffi::OsStr;
 use std::fs::File;
 use std::io::BufRead;
-use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::mpsc::channel;
@@ -16,6 +15,7 @@ use tar::Archive;
 #[derive(Clone)]
 pub struct Unpacker {
     pub args: crate::args::Args,
+    pub assets: Vec<crate::asset::Asset>
 }
 
 impl Unpacker {
@@ -35,12 +35,10 @@ impl Unpacker {
             fs::remove_dir_all(output_dir).unwrap();
         }
     }
-
-    pub fn process_data(&self) {
+    pub fn extract(&mut self) {
         let archive_path = Path::new(&self.args.input);
-        let output_dir = Path::new(&self.args.output);
-        let copy_meta_files = self.args.copy_meta_files;
         let tmp_path = Path::new("./tmp_dir");
+
         if let Err(e) = Unpacker::extract_archive(archive_path, tmp_path) {
             println!("Failed to extract archive: {}", e);
         }
@@ -61,12 +59,18 @@ impl Unpacker {
                     }
                 }
             });
+        self.assets = receiver.iter().collect();
+    }
 
+    pub fn process_data(&self) {
+        let output_dir = Path::new(&self.args.output);
+        let copy_meta_files = self.args.copy_meta_files;
+        let tmp_path = Path::new("./tmp_dir");
+
+        let mapping_arc = Arc::new(&self.assets);
         let tmp_dir = Arc::new(tmp_path);
         fs::create_dir(output_dir).unwrap();
         let output_dir = Arc::new(output_dir);
-        let mapping: Vec<Asset> = receiver.iter().collect();
-        let mapping_arc = Arc::new(mapping);
 
         mapping_arc.par_iter().for_each(|asset| {
             let asset_hash = &asset.hash;
@@ -82,7 +86,10 @@ impl Unpacker {
                 let result_path = output_dir.join(meta_path);
                 fs::rename(source_meta, result_path).unwrap();
             }
-            check_source_asset_exists(&source_asset);
+
+            if !source_asset.exists() {
+                panic!("SOURCE ASSET DOES NOT EXIST: {}", source_asset.display());
+            }
 
             if self.args.fbx_to_gltf.is_some() {
                 if let Some("fbx") = path.extension().and_then(OsStr::to_str) {
@@ -105,12 +112,6 @@ impl Unpacker {
             let result_dir = result_path.parent().unwrap();
             if !result_dir.exists() {
                 fs::create_dir_all(result_dir).unwrap();
-            }
-        }
-
-        fn check_source_asset_exists(source_asset: &Path) {
-            if !source_asset.exists() {
-                panic!("SOURCE ASSET DOES NOT EXIST: {}", source_asset.display());
             }
         }
 
