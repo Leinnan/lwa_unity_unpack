@@ -4,7 +4,7 @@ use std::fs::DirEntry;
 use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Clone)]
 pub struct Asset {
@@ -12,6 +12,16 @@ pub struct Asset {
     pub hash: String,
     pub path_name: String,
     pub has_meta: bool,
+    pub asset_type: AssetType
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub enum AssetType{
+    FbxModel,
+    Material,
+    Prefab,
+    Scene,
+    Other(String)
 }
 
 impl Asset {
@@ -52,11 +62,22 @@ impl Asset {
             }
         }
         if has_asset {
+            let asset_type = match &extension {
+                Some(str) => match str.as_str() {
+                    "fbx" => AssetType::FbxModel,
+                    "prefab" => AssetType::Prefab,
+                    "unity" => AssetType::Scene,
+                    "mat" => AssetType::Material,
+                    _ => AssetType::Other(str.clone())
+                },
+                _ => AssetType::Other(String::new())
+            };
             Some(Asset {
                 extension,
                 hash: asset,
                 path_name: real_path,
                 has_meta,
+                asset_type,
             })
         } else {
             None

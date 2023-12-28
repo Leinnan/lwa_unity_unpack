@@ -22,6 +22,6 @@ opt-level = 2
 [dependencies]
 clap = { version = "4.4", features = ["derive"] }
 flate2 = "1.0"
-hashbrown = { version ="0.14.3", features = ["ahash","allocator-api2","inline-more","rayon"] }
+gltf = "1.4.0"
 rayon = "1.8.0"
 tar = "0.4"
