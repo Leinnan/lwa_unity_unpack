@@ -1,4 +1,4 @@
-use crate::asset::{Asset,AssetType};
+use crate::asset::{Asset, AssetType};
 use flate2::read::GzDecoder;
 use rayon::prelude::*;
 use std::fs::File;
@@ -7,7 +7,6 @@ use std::process::Command;
 use std::sync::mpsc::channel;
 use std::sync::Arc;
 use std::{fs, io};
-use std::hash::Hash;
 use tar::Archive;
 
 #[derive(Clone)]
@@ -36,6 +35,7 @@ impl Unpacker {
     pub fn extract(&mut self) {
         let archive_path = Path::new(&self.args.input);
         let tmp_path = Path::new("./tmp_dir");
+        let output_dir = Path::new(&self.args.output);
 
         if let Err(e) = Unpacker::extract_archive(archive_path, tmp_path) {
             println!("Failed to extract archive: {}", e);
@@ -49,7 +49,7 @@ impl Unpacker {
             .par_bridge()
             .for_each_with(sender, |s, entry| {
                 let entry = entry.unwrap();
-                let asset = crate::asset::Asset::from_path(&entry);
+                let asset = crate::asset::Asset::from_path(&entry, &output_dir.to_path_buf());
                 if let Some(asset) = asset {
                     let extension = &asset.extension.clone().unwrap_or_default();
                     if !ignored_extensions.contains(extension) {
@@ -64,29 +64,67 @@ impl Unpacker {
         if self.args.fbx_to_gltf.is_none() {
             return;
         }
-        let output_dir = Path::new(&self.args.output);
-
-        let fbx_models : Vec<Asset> = self.assets.clone().into_iter().filter(|a| &a.asset_type == &AssetType::FbxModel).collect();
-        let prefabs : Vec<Asset> = self.assets.clone().into_iter().filter(|a| &a.asset_type == &AssetType::Prefab).collect();
-        let materials : Vec<Asset> = self.assets.clone().into_iter().filter(|a| &a.asset_type == &AssetType::Material).collect();
-        println!("There are {} models, {} prefabs and {} materials", fbx_models.len(), prefabs.len(), materials.len());
+        let fbx_models: Vec<Asset> = self
+            .assets
+            .clone()
+            .into_iter()
+            .filter(|a| &a.asset_type == &AssetType::FbxModel)
+            .collect();
+        let prefabs: Vec<Asset> = self
+            .assets
+            .clone()
+            .into_iter()
+            .filter(|a| &a.asset_type == &AssetType::Prefab)
+            .collect();
+        let materials: Vec<Asset> = self
+            .assets
+            .clone()
+            .into_iter()
+            .filter(|a| &a.asset_type == &AssetType::Material)
+            .collect();
+        println!(
+            "There are {} models, {} prefabs and {} materials",
+            fbx_models.len(),
+            prefabs.len(),
+            materials.len()
+        );
+        let mut counter = 0;
+        let mut result_models : Vec<Asset> = vec![];
         for prefab in prefabs.iter() {
-            let path = Path::new(&prefab.path_name);
-            let result_path = output_dir.join(path);
-            let prefab_content = fs::read_to_string(&result_path).unwrap();
-            let matching_materials : Vec<Asset> = materials.clone().into_iter().filter(|a| prefab_content.contains(&a.hash)).collect();
-            let matching_models : Vec<Asset> = fbx_models.clone().into_iter().filter(|a| prefab_content.contains(&a.hash)).collect();
-            println!("Prefab: {},\nMaterials: ",&prefab.path_name);
-            for m in matching_materials.iter() {
-                println!(" - {}",&m.path_name);
+            let path = Path::new(&prefab.path);
+            let prefab_content = fs::read_to_string(&path).unwrap();
+            let matching_materials: Vec<Asset> = materials
+                .clone()
+                .into_iter()
+                .filter(|a| prefab_content.contains(&a.guid))
+                .collect();
+            let matching_models: Vec<Asset> = fbx_models
+                .clone()
+                .into_iter()
+                .filter(|a| prefab_content.contains(&a.guid))
+                .collect();
+            if matching_materials.len() != 1 || 1 != matching_models.len() {
+                continue;
             }
-            println!("Models: ");
-            for m in matching_models.iter() {
-                println!(" - {}",&m.path_name);
+            let material = matching_materials.first().unwrap();
+            let model = matching_models.first().unwrap();
+            if result_models.iter().any(|a| model.guid.eq(&a.guid)) {
+                continue;
             }
+            let texture_guid: Option<String> = material.try_get_mat_texture_guid();
+            let texture_asset: &Asset;
+            match &texture_guid {
+                Some(guid) => {
+                    texture_asset = self.assets.iter().find(|a| guid.eq(&a.guid)).unwrap()
+                }
+                None => continue,
+            }
+            // here we should read gltf file and replace material texture with Uri based on texture_asset
 
-            // now if there is one material and one model we should read material texture path and assign it to model material texture
+            result_models.push(model.clone());
+            counter += 1;
         }
+        println!("Updated {} models", counter);
     }
 
     pub fn process_data(&self) {
@@ -97,21 +135,18 @@ impl Unpacker {
         let mapping_arc = Arc::new(&self.assets);
         let tmp_dir = Arc::new(tmp_path);
         fs::create_dir(output_dir).unwrap();
-        let output_dir = Arc::new(output_dir);
 
         mapping_arc.par_iter().for_each(|asset| {
-            let asset_hash = &asset.hash;
-            let path = Path::new(&asset.path_name);
+            let asset_hash = &asset.guid;
+            let path = Path::new(&asset.path);
             let source_asset = Path::new(&*tmp_dir).join(asset_hash).join("asset");
-            let result_path = output_dir.join(path);
 
-            process_directory(asset_hash, &asset.path_name, &result_path);
+            asset.prepare_directory();
             if copy_meta_files && asset.has_meta {
                 let source_meta = Path::new(&*tmp_dir).join(asset_hash).join("asset.meta");
-                let mut meta_path = asset.path_name.clone();
+                let mut meta_path = asset.path.clone();
                 meta_path.push_str(".meta");
-                let result_path = output_dir.join(meta_path);
-                fs::rename(source_meta, result_path).unwrap();
+                fs::rename(source_meta, meta_path).unwrap();
             }
 
             if !source_asset.exists() {
@@ -121,23 +156,15 @@ impl Unpacker {
             if self.args.fbx_to_gltf.is_some() && &asset.asset_type == &AssetType::FbxModel {
                 process_fbx_file(
                     &source_asset,
-                    &result_path,
+                    &path,
                     &self.args.fbx_to_gltf.clone().unwrap(),
                 );
             } else {
-                process_non_fbx_file(&source_asset, &result_path);
+                process_non_fbx_file(&source_asset, &path);
             }
         });
 
         fs::remove_dir_all(Path::new(&*tmp_dir)).unwrap();
-
-        fn process_directory(asset_hash: &str, asset_path: &str, result_path: &Path) {
-            println!("{}: {:?}", asset_hash, asset_path);
-            let result_dir = result_path.parent().unwrap();
-            if !result_dir.exists() {
-                fs::create_dir_all(result_dir).unwrap();
-            }
-        }
 
         fn process_fbx_file(source_asset: &Path, result_path: &Path, tool: &PathBuf) {
             let out_path = result_path.with_extension("");
