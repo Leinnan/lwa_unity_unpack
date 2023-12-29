@@ -16,6 +16,8 @@ Options:
   -i, --input <INPUT>              .unitypackage file to extract
   -o, --output <OUTPUT>            target directory
   -f, --fbx-to-gltf <FBX_TO_GLTF>  optional- path to the tool that will auto convert fbx files to gltf during unpacking
+      --get-materials-from-prefabs
+          checks if material base texture in prefabs differ from the one specified in fbx model that is converted to GLTF and overrides it with the one from prefab and copy texture to models folder
       --ignore-extensions <IGNORE_EXTENSIONS>
           optional- extensions that will be ignored during unpacking
       --copy-meta-files
