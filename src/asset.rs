@@ -6,7 +6,6 @@ use std::fs::File;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::path::Path;
-use std::path::PathBuf;
 
 #[derive(Clone)]
 pub struct Asset {
@@ -34,9 +33,9 @@ impl Asset {
         }
         let file = File::open(&self.path).unwrap();
         let buf_reader = BufReader::new(file);
-        let search = buf_reader.lines().into_iter().find(|s| {
+        let search = buf_reader.lines().find(|s| {
             let ss = s.as_ref().unwrap();
-            return ss.contains("m_Texture") && ss.contains("guid: ");
+            ss.contains("m_Texture") && ss.contains("guid: ")
         });
         if let Some(line) = search {
             let line = line.unwrap_or_default();
@@ -65,7 +64,7 @@ impl Asset {
         }
     }
 
-    pub fn from_path(entry: &DirEntry, output_dir: &PathBuf) -> Option<Asset> {
+    pub fn from_path(entry: &DirEntry, output_dir: &Path) -> Option<Asset> {
         let root_file = entry.path();
         if !root_file.is_dir() {
             return None;

@@ -56,7 +56,7 @@ impl Unpacker {
             .par_bridge()
             .for_each_with(sender, |s, entry| {
                 let entry = entry.unwrap();
-                let asset = crate::asset::Asset::from_path(&entry, &output_dir.to_path_buf());
+                let asset = crate::asset::Asset::from_path(&entry, output_dir);
                 if let Some(asset) = asset {
                     let extension = &asset.extension.clone().unwrap_or_default();
                     if !ignored_extensions.contains(extension) {
@@ -75,19 +75,19 @@ impl Unpacker {
             .assets
             .clone()
             .into_iter()
-            .filter(|a| &a.asset_type == &AssetType::FbxModel)
+            .filter(|a| a.asset_type == AssetType::FbxModel)
             .collect();
         let prefabs: Vec<Asset> = self
             .assets
             .clone()
             .into_iter()
-            .filter(|a| &a.asset_type == &AssetType::Prefab)
+            .filter(|a| a.asset_type == AssetType::Prefab)
             .collect();
         let materials: Vec<Asset> = self
             .assets
             .clone()
             .into_iter()
-            .filter(|a| &a.asset_type == &AssetType::Material)
+            .filter(|a| a.asset_type == AssetType::Material)
             .collect();
         println!(
             "There are {} models, {} prefabs and {} materials",
@@ -96,7 +96,7 @@ impl Unpacker {
             materials.len()
         );
 
-        prefabs.par_iter().for_each(|prefab|{
+        prefabs.par_iter().for_each(|prefab| {
             let path = Path::new(&prefab.path);
             let prefab_content = fs::read_to_string(path).unwrap();
             let matching_materials: Vec<Asset> = materials
@@ -115,11 +115,9 @@ impl Unpacker {
             let material = matching_materials.first().unwrap();
             let model: &Asset = matching_models.first().unwrap();
             let texture_guid: Option<String> = material.try_get_mat_texture_guid();
-            
+
             let texture_asset: &Asset = match &texture_guid {
-                Some(guid) => {
-                    self.assets.iter().find(|a| guid.eq(&a.guid)).unwrap()
-                }
+                Some(guid) => self.assets.iter().find(|a| guid.eq(&a.guid)).unwrap(),
                 None => return,
             };
             // here we should read gltf file and replace material texture with Uri based on texture_asset
@@ -180,11 +178,10 @@ impl Unpacker {
         let copy_meta_files = self.args.copy_meta_files;
         let tmp_path = Path::new("./tmp_dir");
 
-        let mapping_arc = Arc::new(&self.assets);
         let tmp_dir = Arc::new(tmp_path);
         fs::create_dir(output_dir).unwrap();
 
-        mapping_arc.par_iter().for_each(|asset| {
+        self.assets.par_iter().for_each(|asset| {
             let asset_hash = &asset.guid;
             let path = Path::new(&asset.path);
             let source_asset = Path::new(&*tmp_dir).join(asset_hash).join("asset");
@@ -201,47 +198,40 @@ impl Unpacker {
                 panic!("SOURCE ASSET DOES NOT EXIST: {}", source_asset.display());
             }
 
-            if self.args.fbx_to_gltf.is_some() && &asset.asset_type == &AssetType::FbxModel {
-                process_fbx_file(
-                    &source_asset,
-                    path,
-                    &self.args.fbx_to_gltf.clone().unwrap(),
-                );
+            if self.args.fbx_to_gltf.is_some() && asset.asset_type == AssetType::FbxModel {
+                self.process_fbx_file(&source_asset, path);
             } else {
-                process_non_fbx_file(&source_asset, path);
+                fs::rename(source_asset, path).unwrap();
             }
         });
 
         fs::remove_dir_all(Path::new(&*tmp_dir)).unwrap();
+    }
 
-        fn process_fbx_file(source_asset: &Path, result_path: &Path, tool: &PathBuf) {
-            let out_path = result_path.with_extension("");
-            println!(
-                "{:?}",
-                &[
-                    "--input",
-                    source_asset.to_str().unwrap(),
-                    "--output",
-                    out_path.to_str().unwrap()
-                ]
-            );
-            let output = Command::new(tool)
-                .args([
-                    "--input",
-                    source_asset.to_str().unwrap(),
-                    "-b",
-                    "--output",
-                    out_path.to_str().unwrap(),
-                ])
-                .output()
-                .unwrap();
-            let output_result = String::from_utf8_lossy(&output.stdout);
-            println!("output: {}", output_result);
-        }
-
-        fn process_non_fbx_file(source_asset: &Path, result_path: &Path) {
-            fs::rename(source_asset, result_path).unwrap();
-        }
+    fn process_fbx_file(&self, source_asset: &Path, result_path: &Path) {
+        let tool = self.args.fbx_to_gltf.clone().unwrap();
+        let out_path = result_path.with_extension("");
+        println!(
+            "{:?}",
+            &[
+                "--input",
+                source_asset.to_str().unwrap(),
+                "--output",
+                out_path.to_str().unwrap()
+            ]
+        );
+        let output = Command::new(tool)
+            .args([
+                "--input",
+                source_asset.to_str().unwrap(),
+                "-b",
+                "--output",
+                out_path.to_str().unwrap(),
+            ])
+            .output()
+            .unwrap();
+        let output_result = String::from_utf8_lossy(&output.stdout);
+        println!("output: {}", output_result);
     }
 
     fn extract_archive(archive_path: &Path, extract_to: &Path) -> io::Result<()> {
