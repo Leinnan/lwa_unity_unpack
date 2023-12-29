@@ -35,6 +35,7 @@ impl Unpacker {
             fs::remove_dir_all(output_dir).unwrap();
         }
     }
+
     pub fn extract(&mut self) {
         let archive_path = Path::new(&self.args.input);
         let tmp_path = Path::new("./tmp_dir");
@@ -63,28 +64,21 @@ impl Unpacker {
         self.assets = receiver.iter().collect();
     }
 
+    pub fn assets_of_type(&self, asset_type: AssetType) -> Vec<Asset> {
+        self.assets
+            .clone()
+            .into_iter()
+            .filter(|a| a.asset_type == asset_type)
+            .collect()
+    }
+
     pub fn update_gltf_materials(&self) {
         if self.args.fbx_to_gltf.is_none() || !self.args.get_materials_from_prefabs {
             return;
         }
-        let fbx_models: Vec<Asset> = self
-            .assets
-            .clone()
-            .into_iter()
-            .filter(|a| a.asset_type == AssetType::FbxModel)
-            .collect();
-        let prefabs: Vec<Asset> = self
-            .assets
-            .clone()
-            .into_iter()
-            .filter(|a| a.asset_type == AssetType::Prefab)
-            .collect();
-        let materials: Vec<Asset> = self
-            .assets
-            .clone()
-            .into_iter()
-            .filter(|a| a.asset_type == AssetType::Material)
-            .collect();
+        let fbx_models = self.assets_of_type(AssetType::FbxModel);
+        let prefabs = self.assets_of_type(AssetType::Prefab);
+        let materials = self.assets_of_type(AssetType::Material);
         println!(
             "There are {} models, {} prefabs and {} materials",
             fbx_models.len(),
@@ -132,13 +126,18 @@ impl Unpacker {
         let mut gltf = gltf::Gltf::from_reader(reader).unwrap();
         let mut json = gltf.document.into_json();
         for image in json.images.iter_mut() {
-            let result = texture_asset.file_name().unwrap().to_str().unwrap().to_string();
+            let result = texture_asset
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_string();
             let required_file = gltf_path.with_file_name(&result);
             if !required_file.exists() {
                 fs::copy(texture_asset, gltf_path.with_file_name(&result)).unwrap();
             }
             if let Some(old_path) = &image.uri {
-                if old_path.eq(&result){
+                if old_path.eq(&result) {
                     return;
                 }
             }
