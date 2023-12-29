@@ -1,6 +1,9 @@
 use crate::asset::{Asset, AssetType};
 use flate2::read::GzDecoder;
+use gltf::{json, Document};
 use rayon::prelude::*;
+use std::borrow::Cow;
+
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -13,6 +16,10 @@ use tar::Archive;
 pub struct Unpacker {
     pub args: crate::args::Args,
     pub assets: Vec<Asset>,
+}
+
+fn get_relative_path(path1: &Path, path2: &Path) -> Option<PathBuf> {
+    pathdiff::diff_paths(path1, path2)
 }
 
 impl Unpacker {
@@ -88,11 +95,10 @@ impl Unpacker {
             prefabs.len(),
             materials.len()
         );
-        let mut counter = 0;
-        let mut result_models : Vec<Asset> = vec![];
-        for prefab in prefabs.iter() {
+
+        prefabs.par_iter().for_each(|prefab|{
             let path = Path::new(&prefab.path);
-            let prefab_content = fs::read_to_string(&path).unwrap();
+            let prefab_content = fs::read_to_string(path).unwrap();
             let matching_materials: Vec<Asset> = materials
                 .clone()
                 .into_iter()
@@ -104,27 +110,69 @@ impl Unpacker {
                 .filter(|a| prefab_content.contains(&a.guid))
                 .collect();
             if matching_materials.len() != 1 || 1 != matching_models.len() {
-                continue;
+                return;
             }
             let material = matching_materials.first().unwrap();
-            let model = matching_models.first().unwrap();
-            if result_models.iter().any(|a| model.guid.eq(&a.guid)) {
-                continue;
-            }
+            let model: &Asset = matching_models.first().unwrap();
             let texture_guid: Option<String> = material.try_get_mat_texture_guid();
-            let texture_asset: &Asset;
-            match &texture_guid {
+            
+            let texture_asset: &Asset = match &texture_guid {
                 Some(guid) => {
-                    texture_asset = self.assets.iter().find(|a| guid.eq(&a.guid)).unwrap()
+                    self.assets.iter().find(|a| guid.eq(&a.guid)).unwrap()
                 }
-                None => continue,
-            }
+                None => return,
+            };
             // here we should read gltf file and replace material texture with Uri based on texture_asset
+            let model_path = Path::new(&model.path).with_extension("glb");
+            Self::modify_material(&model_path, Path::new(&texture_asset.path));
+        });
+    }
 
-            result_models.push(model.clone());
-            counter += 1;
+    fn align_to_multiple_of_four(n: &mut usize) {
+        *n = (*n + 3) & !3;
+    }
+
+    fn modify_material(gltf_path: &Path, texture_asset: &Path) {
+        let file = fs::File::open(gltf_path).unwrap();
+        let reader = io::BufReader::new(file);
+        let mut gltf = gltf::Gltf::from_reader(reader).unwrap();
+        let mut json = gltf.document.into_json();
+        if let Some(rel_path) = get_relative_path(texture_asset, gltf_path) {
+            for image in json.images.iter_mut() {
+                let result = rel_path.file_name().unwrap().to_str().unwrap().to_string();
+                let required_file = gltf_path.with_file_name(&result);
+                if !required_file.exists() {
+                    fs::copy(texture_asset, gltf_path.with_file_name(&result)).unwrap();
+                }
+                println!(
+                    "Image{:?}: {:?} to be replaced with: {}",
+                    image.name, image.uri, &result
+                );
+                image.uri = Some(result);
+            }
         }
-        println!("Updated {} models", counter);
+
+        gltf.document = Document::from_json(json.clone()).unwrap();
+        // Save the modified glTF
+        let json_string = json::serialize::to_string(&json).expect("Serialization error");
+        let mut json_offset = json_string.len();
+        Self::align_to_multiple_of_four(&mut json_offset);
+        let blob = gltf.blob.clone().unwrap_or_default();
+        let buffer_length = blob.len();
+        let glb = gltf::binary::Glb {
+            header: gltf::binary::Header {
+                magic: *b"glTF",
+                version: 2,
+                // N.B., the size of binary glTF file is limited to range of `u32`.
+                length: (json_offset + buffer_length)
+                    .try_into()
+                    .expect("file size exceeds binary glTF limit"),
+            },
+            bin: Some(Cow::Owned(gltf.blob.unwrap_or_default())),
+            json: Cow::Owned(json_string.into_bytes()),
+        };
+        let writer = std::fs::File::create(gltf_path).expect("I/O error");
+        glb.to_writer(writer).expect("glTF binary output error");
     }
 
     pub fn process_data(&self) {
@@ -156,11 +204,11 @@ impl Unpacker {
             if self.args.fbx_to_gltf.is_some() && &asset.asset_type == &AssetType::FbxModel {
                 process_fbx_file(
                     &source_asset,
-                    &path,
+                    path,
                     &self.args.fbx_to_gltf.clone().unwrap(),
                 );
             } else {
-                process_non_fbx_file(&source_asset, &path);
+                process_non_fbx_file(&source_asset, path);
             }
         });
 
