@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.0]
+
+### Added
+
+- New flag `--get_materials_from_prefabs` for updating model textures based on prefabs and materials.
+
 ## [0.3.0]
 
 ### Added

@@ -1,12 +1,11 @@
-use crate::asset::Asset;
+use crate::asset::{Asset, AssetType};
 use flate2::read::GzDecoder;
-use hashbrown::HashMap;
+use gltf::{json, Document};
 use rayon::prelude::*;
-use std::ffi::OsStr;
+use std::borrow::Cow;
+
 use std::fs::File;
-use std::io::BufRead;
-use std::io::BufReader;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 use std::sync::mpsc::channel;
 use std::sync::Arc;
@@ -16,6 +15,7 @@ use tar::Archive;
 #[derive(Clone)]
 pub struct Unpacker {
     pub args: crate::args::Args,
+    pub assets: Vec<Asset>,
 }
 
 impl Unpacker {
@@ -36,11 +36,11 @@ impl Unpacker {
         }
     }
 
-    pub fn process_data(&self) {
+    pub fn extract(&mut self) {
         let archive_path = Path::new(&self.args.input);
-        let output_dir = Path::new(&self.args.output);
-        let copy_meta_files = self.args.copy_meta_files;
         let tmp_path = Path::new("./tmp_dir");
+        let output_dir = Path::new(&self.args.output);
+
         if let Err(e) = Unpacker::extract_archive(archive_path, tmp_path) {
             println!("Failed to extract archive: {}", e);
         }
@@ -53,7 +53,7 @@ impl Unpacker {
             .par_bridge()
             .for_each_with(sender, |s, entry| {
                 let entry = entry.unwrap();
-                let asset = crate::asset::Asset::from_path(&entry);
+                let asset = crate::asset::Asset::from_path(&entry, output_dir);
                 if let Some(asset) = asset {
                     let extension = &asset.extension.clone().unwrap_or_default();
                     if !ignored_extensions.contains(extension) {
@@ -61,87 +61,168 @@ impl Unpacker {
                     }
                 }
             });
+        self.assets = receiver.iter().collect();
+    }
 
-        let tmp_dir = Arc::new(tmp_path);
-        fs::create_dir(output_dir).unwrap();
-        let output_dir = Arc::new(output_dir);
-        let mapping: Vec<Asset> = receiver.iter().collect();
-        let mapping_arc = Arc::new(mapping);
+    pub fn assets_of_type(&self, asset_type: AssetType) -> Vec<Asset> {
+        self.assets
+            .clone()
+            .into_iter()
+            .filter(|a| a.asset_type == asset_type)
+            .collect()
+    }
 
-        mapping_arc.par_iter().for_each(|asset| {
-            let asset_hash = &asset.hash;
-            let path = Path::new(&asset.path_name);
-            let source_asset = Path::new(&*tmp_dir).join(asset_hash).join("asset");
-            let result_path = output_dir.join(path);
+    pub fn update_gltf_materials(&self) {
+        if self.args.fbx_to_gltf.is_none() || !self.args.get_materials_from_prefabs {
+            return;
+        }
+        let fbx_models = self.assets_of_type(AssetType::FbxModel);
+        let prefabs = self.assets_of_type(AssetType::Prefab);
+        let materials = self.assets_of_type(AssetType::Material);
+        println!(
+            "There are {} models, {} prefabs and {} materials",
+            fbx_models.len(),
+            prefabs.len(),
+            materials.len()
+        );
 
-            process_directory(asset_hash, &asset.path_name, &result_path);
-            if copy_meta_files && asset.has_meta {
-                let source_meta = Path::new(&*tmp_dir).join(asset_hash).join("asset.meta");
-                let mut meta_path = asset.path_name.clone();
-                meta_path.push_str(".meta");
-                let result_path = output_dir.join(meta_path);
-                fs::rename(source_meta, result_path).unwrap();
+        prefabs.par_iter().for_each(|prefab| {
+            let path = Path::new(&prefab.path);
+            let prefab_content = fs::read_to_string(path).unwrap();
+            let matching_materials: Vec<Asset> = materials
+                .clone()
+                .into_iter()
+                .filter(|a| prefab_content.contains(&a.guid))
+                .collect();
+            let matching_models: Vec<Asset> = fbx_models
+                .clone()
+                .into_iter()
+                .filter(|a| prefab_content.contains(&a.guid))
+                .collect();
+            if matching_materials.len() != 1 || 1 != matching_models.len() {
+                return;
             }
-            check_source_asset_exists(&source_asset);
+            let material = matching_materials.first().unwrap();
+            let model: &Asset = matching_models.first().unwrap();
+            let texture_guid: Option<String> = material.try_get_mat_texture_guid();
 
-            if self.args.fbx_to_gltf.is_some() {
-                if let Some("fbx") = path.extension().and_then(OsStr::to_str) {
-                    process_fbx_file(
-                        &source_asset,
-                        &result_path,
-                        &self.args.fbx_to_gltf.clone().unwrap(),
-                    );
+            let texture_asset: &Asset = match &texture_guid {
+                Some(guid) => self.assets.iter().find(|a| guid.eq(&a.guid)).unwrap(),
+                None => return,
+            };
+            // here we should read gltf file and replace material texture with Uri based on texture_asset
+            let model_path = Path::new(&model.path).with_extension("glb");
+            Self::update_material(&model_path, Path::new(&texture_asset.path));
+        });
+    }
+
+    fn align_to_multiple_of_four(n: &mut usize) {
+        *n = (*n + 3) & !3;
+    }
+
+    fn update_material(gltf_path: &Path, texture_asset: &Path) {
+        let file = fs::File::open(gltf_path).unwrap();
+        let reader = io::BufReader::new(file);
+        let mut gltf = gltf::Gltf::from_reader(reader).unwrap();
+        let mut json = gltf.document.into_json();
+        for image in json.images.iter_mut() {
+            let result = texture_asset
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_string();
+            let required_file = gltf_path.with_file_name(&result);
+            if !required_file.exists() {
+                fs::copy(texture_asset, gltf_path.with_file_name(&result)).unwrap();
+            }
+            if let Some(old_path) = &image.uri {
+                if old_path.eq(&result) {
                     return;
                 }
             }
-
-            process_non_fbx_file(&source_asset, &result_path);
-        });
-
-        fs::remove_dir_all(Path::new(&*tmp_dir)).unwrap();
-
-        fn process_directory(asset_hash: &str, asset_path: &str, result_path: &Path) {
-            println!("{}: {:?}", asset_hash, asset_path);
-            let result_dir = result_path.parent().unwrap();
-            if !result_dir.exists() {
-                fs::create_dir_all(result_dir).unwrap();
-            }
+            println!(
+                "Image{:?}: {:?} to be replaced with: {}",
+                image.name, image.uri, &result
+            );
+            image.uri = Some(result);
         }
 
-        fn check_source_asset_exists(source_asset: &Path) {
+        gltf.document = Document::from_json(json.clone()).unwrap();
+        // Save the modified glTF
+        let json_string = json::serialize::to_string(&json).expect("Serialization error");
+        let mut json_offset = json_string.len();
+        Self::align_to_multiple_of_four(&mut json_offset);
+        let blob = gltf.blob.clone().unwrap_or_default();
+        let buffer_length = blob.len();
+        let glb = gltf::binary::Glb {
+            header: gltf::binary::Header {
+                magic: *b"glTF",
+                version: 2,
+                // N.B., the size of binary glTF file is limited to range of `u32`.
+                length: (json_offset + buffer_length)
+                    .try_into()
+                    .expect("file size exceeds binary glTF limit"),
+            },
+            bin: Some(Cow::Owned(gltf.blob.unwrap_or_default())),
+            json: Cow::Owned(json_string.into_bytes()),
+        };
+        let writer = std::fs::File::create(gltf_path).expect("I/O error");
+        glb.to_writer(writer).expect("glTF binary output error");
+    }
+
+    pub fn process_data(&self) {
+        let output_dir = Path::new(&self.args.output);
+        let copy_meta_files = self.args.copy_meta_files;
+        let tmp_path = Path::new("./tmp_dir");
+
+        let tmp_dir = Arc::new(tmp_path);
+        fs::create_dir(output_dir).unwrap();
+
+        self.assets.par_iter().for_each(|asset| {
+            let asset_hash = &asset.guid;
+            let path = Path::new(&asset.path);
+            let source_asset = Path::new(&*tmp_dir).join(asset_hash).join("asset");
+
+            asset.prepare_directory();
+            if copy_meta_files && asset.has_meta {
+                let source_meta = Path::new(&*tmp_dir).join(asset_hash).join("asset.meta");
+                let mut meta_path = asset.path.clone();
+                meta_path.push_str(".meta");
+                fs::rename(source_meta, meta_path).unwrap();
+            }
+
             if !source_asset.exists() {
                 panic!("SOURCE ASSET DOES NOT EXIST: {}", source_asset.display());
             }
-        }
 
-        fn process_fbx_file(source_asset: &Path, result_path: &Path, tool: &PathBuf) {
-            let out_path = result_path.with_extension("");
-            println!(
-                "{:?}",
-                &[
-                    "--input",
-                    source_asset.to_str().unwrap(),
-                    "--output",
-                    out_path.to_str().unwrap()
-                ]
-            );
-            let output = Command::new(tool)
-                .args([
-                    "--input",
-                    source_asset.to_str().unwrap(),
-                    "-b",
-                    "--output",
-                    out_path.to_str().unwrap(),
-                ])
-                .output()
-                .unwrap();
-            let output_result = String::from_utf8_lossy(&output.stdout);
-            println!("output: {}", output_result);
-        }
+            if self.args.fbx_to_gltf.is_some() && asset.asset_type == AssetType::FbxModel {
+                self.process_fbx_file(&source_asset, path);
+            } else {
+                fs::rename(source_asset, path).unwrap();
+            }
+        });
 
-        fn process_non_fbx_file(source_asset: &Path, result_path: &Path) {
-            fs::rename(source_asset, result_path).unwrap();
-        }
+        fs::remove_dir_all(Path::new(&*tmp_dir)).unwrap();
+    }
+
+    fn process_fbx_file(&self, source_asset: &Path, result_path: &Path) {
+        let tool = self.args.fbx_to_gltf.clone().unwrap();
+        let out_path = result_path.with_extension("");
+        let _output = Command::new(tool)
+            .args([
+                "--input",
+                source_asset.to_str().unwrap(),
+                "-b",
+                "--output",
+                out_path.to_str().unwrap(),
+            ])
+            .output()
+            .unwrap();
+        println!(
+            "Fbx converted to GLTF: {}",
+            out_path.with_extension("glb").to_str().unwrap()
+        );
     }
 
     fn extract_archive(archive_path: &Path, extract_to: &Path) -> io::Result<()> {

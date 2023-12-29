@@ -16,6 +16,11 @@ pub struct Args {
     #[arg(short, long)]
     pub fbx_to_gltf: Option<PathBuf>,
 
+    /// checks if material base texture in prefabs differ from the one specified in fbx model
+    /// that is converted to GLTF and overrides it with the one from prefab and copy texture to models folder
+    #[arg(long, default_value = "false", default_missing_value = "true")]
+    pub get_materials_from_prefabs: bool,
+
     /// optional- extensions that will be ignored during unpacking
     #[arg(long, action = clap::ArgAction::Append)]
     pub ignore_extensions: Option<Vec<String>>,
