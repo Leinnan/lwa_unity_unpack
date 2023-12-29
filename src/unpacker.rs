@@ -5,7 +5,7 @@ use rayon::prelude::*;
 use std::borrow::Cow;
 
 use std::fs::File;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 use std::sync::mpsc::channel;
 use std::sync::Arc;
@@ -16,10 +16,6 @@ use tar::Archive;
 pub struct Unpacker {
     pub args: crate::args::Args,
     pub assets: Vec<Asset>,
-}
-
-fn get_relative_path(path1: &Path, path2: &Path) -> Option<PathBuf> {
-    pathdiff::diff_paths(path1, path2)
 }
 
 impl Unpacker {
@@ -135,19 +131,22 @@ impl Unpacker {
         let reader = io::BufReader::new(file);
         let mut gltf = gltf::Gltf::from_reader(reader).unwrap();
         let mut json = gltf.document.into_json();
-        if let Some(rel_path) = get_relative_path(texture_asset, gltf_path) {
-            for image in json.images.iter_mut() {
-                let result = rel_path.file_name().unwrap().to_str().unwrap().to_string();
-                let required_file = gltf_path.with_file_name(&result);
-                if !required_file.exists() {
-                    fs::copy(texture_asset, gltf_path.with_file_name(&result)).unwrap();
-                }
-                println!(
-                    "Image{:?}: {:?} to be replaced with: {}",
-                    image.name, image.uri, &result
-                );
-                image.uri = Some(result);
+        for image in json.images.iter_mut() {
+            let result = texture_asset.file_name().unwrap().to_str().unwrap().to_string();
+            let required_file = gltf_path.with_file_name(&result);
+            if !required_file.exists() {
+                fs::copy(texture_asset, gltf_path.with_file_name(&result)).unwrap();
             }
+            if let Some(old_path) = &image.uri {
+                if old_path.eq(&result){
+                    return;
+                }
+            }
+            println!(
+                "Image{:?}: {:?} to be replaced with: {}",
+                image.name, image.uri, &result
+            );
+            image.uri = Some(result);
         }
 
         gltf.document = Document::from_json(json.clone()).unwrap();
