@@ -68,7 +68,7 @@ impl Unpacker {
     }
 
     pub fn update_gltf_materials(&self) {
-        if self.args.fbx_to_gltf.is_none() {
+        if self.args.fbx_to_gltf.is_none() || !self.args.get_materials_from_prefabs {
             return;
         }
         let fbx_models: Vec<Asset> = self
@@ -122,7 +122,7 @@ impl Unpacker {
             };
             // here we should read gltf file and replace material texture with Uri based on texture_asset
             let model_path = Path::new(&model.path).with_extension("glb");
-            Self::modify_material(&model_path, Path::new(&texture_asset.path));
+            Self::update_material(&model_path, Path::new(&texture_asset.path));
         });
     }
 
@@ -130,7 +130,7 @@ impl Unpacker {
         *n = (*n + 3) & !3;
     }
 
-    fn modify_material(gltf_path: &Path, texture_asset: &Path) {
+    fn update_material(gltf_path: &Path, texture_asset: &Path) {
         let file = fs::File::open(gltf_path).unwrap();
         let reader = io::BufReader::new(file);
         let mut gltf = gltf::Gltf::from_reader(reader).unwrap();
@@ -211,16 +211,7 @@ impl Unpacker {
     fn process_fbx_file(&self, source_asset: &Path, result_path: &Path) {
         let tool = self.args.fbx_to_gltf.clone().unwrap();
         let out_path = result_path.with_extension("");
-        println!(
-            "{:?}",
-            &[
-                "--input",
-                source_asset.to_str().unwrap(),
-                "--output",
-                out_path.to_str().unwrap()
-            ]
-        );
-        let output = Command::new(tool)
+        let _output = Command::new(tool)
             .args([
                 "--input",
                 source_asset.to_str().unwrap(),
@@ -230,8 +221,10 @@ impl Unpacker {
             ])
             .output()
             .unwrap();
-        let output_result = String::from_utf8_lossy(&output.stdout);
-        println!("output: {}", output_result);
+        println!(
+            "Fbx converted to GLTF: {}",
+            out_path.with_extension("glb").to_str().unwrap()
+        );
     }
 
     fn extract_archive(archive_path: &Path, extract_to: &Path) -> io::Result<()> {
