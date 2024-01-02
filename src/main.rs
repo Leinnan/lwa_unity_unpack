@@ -1,7 +1,8 @@
 mod args;
 pub mod asset;
+pub mod primitives;
 mod unpacker;
-
+mod yaml_helpers;
 use clap::Parser;
 
 fn main() {

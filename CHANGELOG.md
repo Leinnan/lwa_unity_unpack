@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.1]
+
+### Fixed
+
+- Improved material parsing, big thanks to [bevity](https://github.com/gamedolphin/bevity).
+
 ## [0.4.0]
 
 ### Added

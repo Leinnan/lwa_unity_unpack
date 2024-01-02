@@ -1,4 +1,4 @@
-use regex::Regex;
+use crate::primitives::materials::read_single_material;
 use std::ffi::OsStr;
 use std::fs;
 use std::fs::DirEntry;
@@ -31,15 +31,15 @@ impl Asset {
             AssetType::Material => {}
             _ => return None,
         }
-        let file = File::open(&self.path).unwrap();
-        let buf_reader = BufReader::new(file);
-        let search = buf_reader.lines().find(|s| {
-            let ss = s.as_ref().unwrap();
-            ss.contains("m_Texture") && ss.contains("guid: ")
-        });
-        if let Some(line) = search {
-            let line = line.unwrap_or_default();
-            return extract_guid(&line);
+        let content = fs::read_to_string(&self.path).unwrap();
+        let material = read_single_material(&content);
+        if let Ok(mat) = material {
+            return mat
+                .properties
+                .tex_envs
+                .iter()
+                .find_map(|tex| tex.get("_MainTex"))
+                .and_then(|t| t.texture.guid.clone());
         }
         None
     }
@@ -122,10 +122,4 @@ impl Asset {
             None
         }
     }
-}
-
-fn extract_guid(text: &str) -> Option<String> {
-    let re = Regex::new(r"guid: (?P<guid>[A-Za-z0-9]{32})").unwrap();
-    re.captures(text)
-        .and_then(|cap| cap.name("guid").map(|guid| guid.as_str().to_string()))
 }
