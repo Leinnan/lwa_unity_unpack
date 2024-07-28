@@ -20,6 +20,7 @@ pub struct Unpacker {
 
 impl Unpacker {
     pub fn prepare_environment(&self) {
+        self.args.check();
         let archive_path = Path::new(&self.args.input);
         let output_dir = Path::new(&self.args.output);
         let tmp_path = Path::new("./tmp_dir");
