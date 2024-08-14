@@ -53,7 +53,7 @@ fn is_executable(path: &PathBuf) -> bool {
 #[cfg(not(target_os = "windows"))]
 fn is_executable(path: &PathBuf) -> bool {
     use std::os::unix::fs::PermissionsExt;
-    if let Ok(metadata) = fs::metadata(path) {
+    if let Ok(metadata) = std::fs::metadata(path) {
         let permissions = metadata.permissions();
         permissions.mode() & 0o111 != 0
     } else {
